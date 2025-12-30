@@ -1,0 +1,10 @@
+node_modules/
+frontend/node_modules/
+frontend/dist/
+automation/node_modules/
+automation/.env
+backend/vendor/
+backend/.env
+backend/database/database.sqlite
+backend/storage/
+backend/bootstrap/cache/
