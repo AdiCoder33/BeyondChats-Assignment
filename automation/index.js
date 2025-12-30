@@ -94,12 +94,18 @@ async function fetchOriginalArticles() {
 }
 
 async function findReferenceLinks(query, limit = 2) {
-  const results =
-    SEARCH_PROVIDER === 'serpapi'
-      ? await searchWithSerpApi(query)
-      : SEARCH_PROVIDER === 'html'
-        ? await searchWithHtml(query)
-        : await searchWithSerper(query);
+  let results = [];
+  try {
+    results =
+      SEARCH_PROVIDER === 'serpapi'
+        ? await searchWithSerpApi(query)
+        : SEARCH_PROVIDER === 'html'
+          ? await searchWithHtml(query)
+          : await searchWithSerper(query);
+  } catch (error) {
+    console.log(`Search failed for "${query}": ${error?.message || error}`);
+    return [];
+  }
 
   const filtered = [];
 
@@ -156,8 +162,18 @@ async function searchWithSerpApi(query) {
 
 async function searchWithHtml(query) {
   const url = `https://r.jina.ai/http://www.google.com/search?q=${encodeURIComponent(query)}`;
-  const response = await http.get(url);
-  const html = response.data || '';
+  let html = '';
+
+  try {
+    html = await fetchSearchHtml(url, REQUEST_TIMEOUT_MS);
+  } catch (error) {
+    if (error?.code === 'ECONNABORTED') {
+      console.log('HTML search timed out, retrying with a longer timeout...');
+      html = await fetchSearchHtml(url, REQUEST_TIMEOUT_MS * 2);
+    } else {
+      throw error;
+    }
+  }
 
   const markdownUrls = extractMarkdownLinks(html);
   const rawUrls = extractRawUrls(html);
@@ -176,6 +192,11 @@ async function searchWithHtml(query) {
   }
 
   return deduped.map((urlItem) => ({ title: urlItem, url: urlItem }));
+}
+
+async function fetchSearchHtml(url, timeoutMs) {
+  const response = await http.get(url, { timeout: timeoutMs });
+  return response.data || '';
 }
 
 function isLikelyArticleUrl(url) {
