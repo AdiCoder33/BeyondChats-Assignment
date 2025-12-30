@@ -2,7 +2,7 @@
 
 Full-stack solution with three phases:
 - Phase 1: Laravel APIs + scraper to ingest BeyondChats blog posts.
-- Phase 2: Node.js automation to search, scrape references, and generate updated articles via LLM.
+- Phase 2: Node.js automation to search, scrape references, and generate updated articles via LLM (OpenAI or Hugging Face).
 - Phase 3: React frontend to display original and updated articles.
 
 ## Repository Structure
@@ -22,7 +22,7 @@ composer install
 copy .env.example .env
 php artisan key:generate
 php artisan migrate
-php artisan articles:scrape
+php artisan articles:scrape --limit=5
 php artisan serve
 ```
 
@@ -44,7 +44,8 @@ npm run start
 
 Required `.env` values:
 - `OPENAI_API_KEY` or `HF_API_KEY`: LLM API key.
-- `HF_MODEL`: Optional Hugging Face model name (defaults to `HuggingFaceH4/zephyr-7b-beta`).
+- `HF_MODEL`: Optional Hugging Face chat model name (defaults to `google/gemma-2-2b-it`).
+- `HF_BASE_URL`: Optional override for Hugging Face router endpoint (OpenAI-compatible, default `https://router.huggingface.co/v1/chat/completions`).
 - `SEARCH_PROVIDER`: `serper`, `serpapi`, or `html`.
 - `SERPER_API_KEY` or `SERPAPI_API_KEY`: Search provider key.
 - `API_BASE_URL`: Defaults to `http://localhost:8000/api`.
@@ -73,9 +74,9 @@ flowchart LR
     B -->|GET originals| D[Node Automation]
     D -->|Google Search| E[Search Provider]
     D -->|Scrape references| F[External Blogs]
-    D -->|LLM API| G[OpenAI]
+    D -->|LLM API| G[LLM Provider (OpenAI / Hugging Face)]
     D -->|POST updated| B
 ```
 
 ## Live Link
-- Frontend: <add deployment URL>
+- Frontend: <add deployment URL here>

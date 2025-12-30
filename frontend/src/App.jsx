@@ -14,9 +14,7 @@ const formatDate = (value) => {
   }).format(date);
 };
 
-const ArticleCard = ({ label, article, tone = 'neutral' }) => {
-  const contentHtml = article?.content_html || '';
-
+const ArticleCard = ({ label, article, tone = 'neutral', onOpen }) => {
   return (
     <article className={`article-card article-card--${tone}`}>
       <div className="article-card__header">
@@ -28,17 +26,17 @@ const ArticleCard = ({ label, article, tone = 'neutral' }) => {
       </div>
       <p className="meta">
         <span>{formatDate(article.published_at)}</span>
-        <span>•</span>
+        <span>|</span>
         <span>{article.version || 'original'}</span>
       </p>
       <p className="excerpt">{article.excerpt || 'No excerpt available yet.'}</p>
-      <details className="article-toggle">
-        <summary>Read full article</summary>
-        <div
-          className="article-body"
-          dangerouslySetInnerHTML={{ __html: contentHtml }}
-        />
-      </details>
+      <button
+        className="article-action"
+        type="button"
+        onClick={() => onOpen?.(article, label)}
+      >
+        Read full article
+      </button>
     </article>
   );
 };
@@ -47,6 +45,8 @@ function App() {
   const [articles, setArticles] = useState([]);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
+  const [modalArticle, setModalArticle] = useState(null);
+  const [modalLabel, setModalLabel] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,6 +77,26 @@ function App() {
 
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!modalArticle) {
+      return undefined;
+    }
+
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        setModalArticle(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = '';
+    };
+  }, [modalArticle]);
 
   const updatedCount = useMemo(
     () =>
@@ -123,7 +143,15 @@ function App() {
           {articles.map((article) => (
             <section className="article-group" key={article.id}>
               <div className="article-column">
-                <ArticleCard label="Original" article={article} tone="original" />
+                <ArticleCard
+                  label="Original"
+                  article={article}
+                  tone="original"
+                  onOpen={(item, label) => {
+                    setModalArticle(item);
+                    setModalLabel(label);
+                  }}
+                />
               </div>
               <div className="article-column">
                 {(article.updated_articles || []).length > 0 ? (
@@ -133,6 +161,10 @@ function App() {
                       label="Updated"
                       article={updated}
                       tone="updated"
+                      onOpen={(item, label) => {
+                        setModalArticle(item);
+                        setModalLabel(label);
+                      }}
                     />
                   ))
                 ) : (
@@ -150,8 +182,47 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>BeyondChats Assignment • Built with Laravel, Node, and React</p>
+        <p>BeyondChats Assignment | Built with Laravel, Node, and React</p>
       </footer>
+      {modalArticle && (
+        <div
+          className="modal-backdrop"
+          onClick={() => setModalArticle(null)}
+          role="presentation"
+        >
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal__header">
+              <div>
+                <p className="eyebrow">{modalLabel}</p>
+                <h2>{modalArticle.title}</h2>
+                <p className="meta">
+                  <span>{formatDate(modalArticle.published_at)}</span>
+                  <span>|</span>
+                  <span>{modalArticle.version || 'original'}</span>
+                </p>
+              </div>
+              <button
+                className="modal__close"
+                type="button"
+                onClick={() => setModalArticle(null)}
+              >
+                Close
+              </button>
+            </header>
+            <div
+              className="modal__body"
+              dangerouslySetInnerHTML={{
+                __html: modalArticle.content_html || '<p>No content available.</p>',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

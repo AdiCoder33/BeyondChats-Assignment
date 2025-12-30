@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import axios from 'axios';
-import cheerio from 'cheerio';
+import { load } from 'cheerio';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import OpenAI from 'openai';
@@ -13,8 +13,13 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const HF_API_KEY = process.env.HF_API_KEY;
 const HF_MODEL = process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta';
-const HF_BASE_URL = process.env.HF_BASE_URL || 'https://api-inference.huggingface.co/models';
+const HF_BASE_URL =
+  process.env.HF_BASE_URL || 'https://router.huggingface.co/v1/chat/completions';
 const MAX_ORIGINALS = Number.parseInt(process.env.MAX_ORIGINALS || '5', 10);
+const MAX_REFERENCE_CANDIDATES = Number.parseInt(
+  process.env.MAX_REFERENCE_CANDIDATES || '6',
+  10
+);
 const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.REQUEST_TIMEOUT_MS || '20000', 10);
 const SKIP_IF_UPDATED = (process.env.SKIP_IF_UPDATED || 'true') === 'true';
 
@@ -37,25 +42,44 @@ async function main() {
       continue;
     }
 
-    console.log(`Searching references for "${original.title}"...`);
-    const references = await findReferenceLinks(original.title);
+    const searchQuery = buildSearchQuery(original.title);
+    console.log(`Searching references for "${searchQuery}"...`);
+    const references = await findReferenceLinks(searchQuery, MAX_REFERENCE_CANDIDATES);
 
     if (references.length < 2) {
       console.log(`Not enough references found for "${original.title}".`);
       continue;
     }
 
-    const referenceArticles = await Promise.all(
-      references.map((ref) => scrapeReadableContent(ref.url))
-    );
+    const referenceArticles = [];
+    const usedReferences = [];
+
+    for (const reference of references) {
+      if (referenceArticles.length >= 2) {
+        break;
+      }
+
+      const article = await scrapeReadableContent(reference.url);
+      if (!article) {
+        continue;
+      }
+
+      referenceArticles.push(article);
+      usedReferences.push(reference);
+    }
+
+    if (referenceArticles.length < 2) {
+      console.log(`Not enough reference content for "${original.title}".`);
+      continue;
+    }
 
     const updatedHtml = await generateUpdatedArticle({
       original,
       referenceArticles,
     });
 
-    const finalHtml = appendReferences(ensureArticleWrapper(updatedHtml), references);
-    await publishUpdatedArticle(original, finalHtml, references);
+    const finalHtml = appendReferences(ensureArticleWrapper(updatedHtml), usedReferences);
+    await publishUpdatedArticle(original, finalHtml, usedReferences);
 
     await delay(1000);
   }
@@ -69,7 +93,7 @@ async function fetchOriginalArticles() {
   return response.data || [];
 }
 
-async function findReferenceLinks(query) {
+async function findReferenceLinks(query, limit = 2) {
   const results =
     SEARCH_PROVIDER === 'serpapi'
       ? await searchWithSerpApi(query)
@@ -88,7 +112,7 @@ async function findReferenceLinks(query) {
       filtered.push(result);
     }
 
-    if (filtered.length >= 2) {
+    if (filtered.length >= limit) {
       break;
     }
   }
@@ -135,28 +159,51 @@ async function searchWithHtml(query) {
   const response = await http.get(url);
   const html = response.data || '';
 
-  const urls = Array.from(new Set(html.match(/https?:\/\/[^\s"'<>]+/g) || []))
-    .map((urlItem) => {
-      try {
-        const parsed = new URL(urlItem);
-        if (parsed.hostname.endsWith('google.com') && parsed.pathname === '/url') {
-          return parsed.searchParams.get('q') || urlItem;
-        }
-      } catch {
-        return urlItem;
-      }
+  const markdownUrls = extractMarkdownLinks(html);
+  const rawUrls = extractRawUrls(html);
+  const combined = [...markdownUrls, ...rawUrls];
 
-      return urlItem;
-    })
-    .filter(Boolean);
+  const deduped = [];
+  for (const urlItem of combined) {
+    const normalized = normalizeSearchUrl(urlItem);
+    if (!normalized) {
+      continue;
+    }
 
-  return urls.map((urlItem) => ({ title: urlItem, url: urlItem }));
+    if (!deduped.includes(normalized)) {
+      deduped.push(normalized);
+    }
+  }
+
+  return deduped.map((urlItem) => ({ title: urlItem, url: urlItem }));
 }
 
 function isLikelyArticleUrl(url) {
   try {
     const parsed = new URL(url);
     const host = parsed.hostname.replace(/^www\./, '');
+    const blockedHosts = [
+      'google.com',
+      'googleusercontent.com',
+      'gstatic.com',
+      'youtube.com',
+      'youtu.be',
+      'amazon.com',
+      'amazon.in',
+      'amazon.co.uk',
+      'linkedin.com',
+      'facebook.com',
+      'instagram.com',
+      'x.com',
+      'twitter.com',
+      'tiktok.com',
+      'pinterest.com',
+      'quora.com',
+    ];
+
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+      return false;
+    }
 
     if (host.endsWith('google.com') || host.endsWith('googleusercontent.com')) {
       return false;
@@ -171,6 +218,14 @@ function isLikelyArticleUrl(url) {
     }
 
     if (!parsed.pathname || parsed.pathname === '/') {
+      return false;
+    }
+
+    if (blockedHosts.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) {
+      return false;
+    }
+
+    if (/\.(png|jpe?g|gif|svg|webp|mp4|mov|pdf)$/i.test(parsed.pathname)) {
       return false;
     }
 
@@ -199,16 +254,32 @@ async function scrapeReadableContent(url) {
     console.log(`Readability failed for ${url}: ${error.message}`);
   }
 
-  const fallbackHtml = await http.get(url);
-  const $ = cheerio.load(fallbackHtml.data || '');
-  const text = $('body').text();
+  try {
+    const fallbackHtml = await http.get(url);
+    const $ = load(fallbackHtml.data || '');
+    const text = $('body').text();
 
-  return {
-    title: $('title').text() || url,
-    content: '',
-    text,
-    url,
-  };
+    return {
+      title: $('title').text() || url,
+      content: '',
+      text,
+      url,
+    };
+  } catch (error) {
+    console.log(`Fallback scrape failed for ${url}: ${error.message}`);
+  }
+
+  const jinaText = await fetchJinaText(url);
+  if (jinaText) {
+    return {
+      title: url,
+      content: '',
+      text: jinaText,
+      url,
+    };
+  }
+
+  return null;
 }
 
 async function generateUpdatedArticle({ original, referenceArticles }) {
@@ -250,14 +321,15 @@ ${referenceText}
   }
 
   const hfResponse = await postWithRetry(
-    `${HF_BASE_URL}/${encodeURIComponent(HF_MODEL)}`,
+    HF_BASE_URL,
     {
-      inputs: prompt,
-      parameters: {
-        max_new_tokens: 1200,
-        temperature: 0.7,
-        return_full_text: false,
-      },
+      model: HF_MODEL,
+      messages: [
+        { role: 'system', content: 'You are a senior editor who writes clean, structured HTML.' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 1200,
+      temperature: 0.7,
     },
     {
       headers: {
@@ -267,6 +339,11 @@ ${referenceText}
   );
 
   const data = hfResponse.data;
+  const chatContent = data?.choices?.[0]?.message?.content?.trim();
+  if (chatContent) {
+    return chatContent;
+  }
+
   if (Array.isArray(data)) {
     return data[0]?.generated_text?.trim() || '';
   }
@@ -318,7 +395,7 @@ function stripHtml(html) {
   if (!html) {
     return '';
   }
-  const $ = cheerio.load(html);
+  const $ = load(html);
   return $('body').text().replace(/\s+/g, ' ').trim();
 }
 
@@ -327,6 +404,77 @@ function limitText(text, maxLength) {
     return text;
   }
   return `${text.slice(0, maxLength)}...`;
+}
+
+function buildSearchQuery(title) {
+  return title
+    .replace(/\s*-\s*Beyondchats/i, '')
+    .replace(/\bBeyondchats\b/i, '')
+    .trim();
+}
+
+function extractMarkdownLinks(content) {
+  const links = [];
+  const regex = /\[[^\]]+]\((https?:\/\/[^)\s]+)\)/g;
+  let match = null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const rawUrl = match[1];
+    const normalized = normalizeSearchUrl(rawUrl);
+    if (normalized && !links.includes(normalized)) {
+      links.push(normalized);
+    }
+  }
+
+  return links;
+}
+
+function extractRawUrls(content) {
+  return Array.from(new Set(content.match(/https?:\/\/[^\s"'<>]+/g) || []));
+}
+
+function normalizeSearchUrl(urlItem) {
+  try {
+    const parsed = new URL(urlItem);
+    if (parsed.hostname.endsWith('google.com') && parsed.pathname === '/url') {
+      const target = parsed.searchParams.get('q') || parsed.searchParams.get('url');
+      return target ? normalizeSearchUrl(target) : urlItem;
+    }
+
+    parsed.hash = '';
+    return parsed.toString().replace(/[)\].,]+$/, '');
+  } catch {
+    return urlItem.replace(/[)\].,]+$/, '');
+  }
+}
+
+async function fetchJinaText(url) {
+  const jinaUrl = buildJinaUrl(url);
+
+  try {
+    const response = await http.get(jinaUrl);
+    const content = stripJinaHeader(response.data || '');
+    return content.trim() ? content : null;
+  } catch (error) {
+    console.log(`Jina fallback failed for ${url}: ${error.message}`);
+    return null;
+  }
+}
+
+function buildJinaUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const protocol = parsed.protocol.replace(':', '');
+    return `https://r.jina.ai/${protocol}://${parsed.host}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return `https://r.jina.ai/http://${url}`;
+  }
+}
+
+function stripJinaHeader(markdown) {
+  return markdown
+    .replace(/^Title:[^\n]*\n+URL Source:[^\n]*\n+Markdown Content:\n+/i, '')
+    .trim();
 }
 
 function delay(ms) {
