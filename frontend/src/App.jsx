@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -56,10 +56,20 @@ function App() {
     currentTitle: '',
     lastUpdatedAt: '',
   });
+  const [showWakeMessage, setShowWakeMessage] = useState(false);
+  const slowLoadTimerRef = useRef(null);
 
   const loadArticles = useCallback(async (signal) => {
     try {
       setStatus('loading');
+      setShowWakeMessage(false);
+      if (slowLoadTimerRef.current) {
+        clearTimeout(slowLoadTimerRef.current);
+      }
+      slowLoadTimerRef.current = setTimeout(() => {
+        setShowWakeMessage(true);
+      }, 2000);
+
       const response = await fetch(
         `${API_BASE_URL}/articles?type=original&withUpdated=true`,
         signal ? { signal } : undefined
@@ -76,13 +86,25 @@ function App() {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Something went wrong.');
       setStatus('error');
+    } finally {
+      if (slowLoadTimerRef.current) {
+        clearTimeout(slowLoadTimerRef.current);
+        slowLoadTimerRef.current = null;
+      }
+      setShowWakeMessage(false);
     }
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     loadArticles(controller.signal);
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (slowLoadTimerRef.current) {
+        clearTimeout(slowLoadTimerRef.current);
+        slowLoadTimerRef.current = null;
+      }
+    };
   }, [loadArticles]);
 
   const fetchAutomationStatus = useCallback(async () => {
@@ -271,7 +293,16 @@ function App() {
       </header>
 
       <main className="content">
-        {status === 'loading' && <p className="status">Loading articles...</p>}
+        {status === 'loading' && (
+          <>
+            <p className="status">Loading articles...</p>
+            {showWakeMessage && (
+              <p className="status status--info">
+                Backend is waking up (free tier). Please wait...
+              </p>
+            )}
+          </>
+        )}
         {status === 'error' && <p className="status status--error">{error}</p>}
 
         {status === 'ready' && articles.length === 0 && (
