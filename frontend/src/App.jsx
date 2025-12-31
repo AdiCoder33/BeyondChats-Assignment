@@ -78,6 +78,59 @@ function App() {
     return () => controller.abort();
   }, [loadArticles]);
 
+  const fetchAutomationStatus = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/automation/status`);
+      if (!response.ok) {
+        throw new Error('Failed to load automation status.');
+      }
+
+      const payload = await response.json();
+      const nextStatus = payload.status || 'idle';
+      setAutomationStatus(nextStatus);
+
+      if (nextStatus === 'success') {
+        const updated = payload.updated_count ?? 0;
+        setAutomationMessage(
+          payload.message || `Automation completed. Updated ${updated} articles.`
+        );
+        await loadArticles();
+        return;
+      }
+
+      if (nextStatus === 'error') {
+        setAutomationMessage(payload.message || 'Automation failed.');
+        return;
+      }
+
+      if (nextStatus === 'running') {
+        setAutomationMessage(payload.message || 'Automation running.');
+        return;
+      }
+
+      setAutomationMessage('');
+    } catch (err) {
+      setAutomationStatus('error');
+      setAutomationMessage(err.message || 'Failed to load automation status.');
+    }
+  }, [loadArticles]);
+
+  useEffect(() => {
+    fetchAutomationStatus();
+  }, [fetchAutomationStatus]);
+
+  useEffect(() => {
+    if (automationStatus !== 'running') {
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      fetchAutomationStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [automationStatus, fetchAutomationStatus]);
+
   const runAutomation = useCallback(async () => {
     try {
       setAutomationStatus('running');
@@ -94,18 +147,14 @@ function App() {
         throw new Error(payload.message || 'Automation failed.');
       }
 
-      setAutomationStatus('started');
-      setAutomationMessage(
-        payload.message || 'Automation started. Refresh the list in a minute.'
-      );
-      setTimeout(() => {
-        loadArticles();
-      }, 10000);
+      setAutomationStatus('running');
+      setAutomationMessage(payload.message || 'Automation started.');
+      fetchAutomationStatus();
     } catch (err) {
       setAutomationStatus('error');
       setAutomationMessage(err.message || 'Automation failed.');
     }
-  }, [loadArticles]);
+  }, [fetchAutomationStatus]);
 
   useEffect(() => {
     if (!modalArticle) {
@@ -170,7 +219,9 @@ function App() {
               className={`status ${
                 automationStatus === 'error'
                   ? 'status--error'
-                  : 'status--info'
+                  : automationStatus === 'success'
+                    ? 'status--success'
+                    : 'status--info'
               }`}
             >
               {automationMessage}

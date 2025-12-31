@@ -4,6 +4,8 @@ import { load } from 'cheerio';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
 import OpenAI from 'openai';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000/api';
 const SEARCH_PROVIDER = (process.env.SEARCH_PROVIDER || 'serper').toLowerCase();
@@ -22,6 +24,7 @@ const MAX_REFERENCE_CANDIDATES = Number.parseInt(
 );
 const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.REQUEST_TIMEOUT_MS || '20000', 10);
 const SKIP_IF_UPDATED = (process.env.SKIP_IF_UPDATED || 'true') === 'true';
+const AUTOMATION_STATUS_FILE = process.env.AUTOMATION_STATUS_FILE;
 
 const http = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
@@ -32,13 +35,42 @@ const http = axios.create({
 });
 
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+const automationState = {
+  startedAt: null,
+  updatedCount: 0,
+  skippedCount: 0,
+};
+
+async function writeAutomationStatus(status, extra = {}) {
+  if (!AUTOMATION_STATUS_FILE) {
+    return;
+  }
+
+  try {
+    await mkdir(path.dirname(AUTOMATION_STATUS_FILE), { recursive: true });
+    const payload = {
+      status,
+      started_at: automationState.startedAt,
+      updated_count: automationState.updatedCount,
+      skipped_count: automationState.skippedCount,
+      ...extra,
+    };
+    await writeFile(AUTOMATION_STATUS_FILE, JSON.stringify(payload, null, 2), 'utf8');
+  } catch (error) {
+    console.error('Failed to write automation status:', error?.message || error);
+  }
+}
 
 async function main() {
+  automationState.startedAt = new Date().toISOString();
+  await writeAutomationStatus('running', { message: 'Automation running.' });
+
   const originals = await fetchOriginalArticles();
 
   for (const original of originals.slice(0, MAX_ORIGINALS)) {
     if (SKIP_IF_UPDATED && (original.updated_articles || []).length > 0) {
       console.log(`Skipping "${original.title}" (already updated).`);
+      automationState.skippedCount += 1;
       continue;
     }
 
@@ -80,9 +112,15 @@ async function main() {
 
     const finalHtml = appendReferences(ensureArticleWrapper(updatedHtml), usedReferences);
     await publishUpdatedArticle(original, finalHtml, usedReferences);
+    automationState.updatedCount += 1;
 
     await delay(1000);
   }
+
+  await writeAutomationStatus('success', {
+    finished_at: new Date().toISOString(),
+    message: 'Automation completed.',
+  });
 }
 
 async function fetchOriginalArticles() {
@@ -527,7 +565,30 @@ async function postWithRetry(url, payload, options, retries = 3) {
   throw lastError;
 }
 
+const handleFailure = async (error) => {
+  await writeAutomationStatus('error', {
+    finished_at: new Date().toISOString(),
+    message: error?.message || 'Automation failed.',
+  });
+};
+
+process.on('unhandledRejection', (error) => {
+  handleFailure(error).finally(() => {
+    console.error(error);
+    process.exit(1);
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  handleFailure(error).finally(() => {
+    console.error(error);
+    process.exit(1);
+  });
+});
+
 main().catch((error) => {
-  console.error(error);
-  process.exit(1);
+  handleFailure(error).finally(() => {
+    console.error(error);
+    process.exit(1);
+  });
 });

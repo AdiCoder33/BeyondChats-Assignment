@@ -67,6 +67,7 @@ Required `.env` values:
 
 You can also trigger automation from the backend:
 - `POST /api/automation/run` (used by the frontend “Generate updated articles” button).
+- `GET /api/automation/status` (polling endpoint for progress updates).
 
 ## Frontend (Phase 3)
 ```bash
