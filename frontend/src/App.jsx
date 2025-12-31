@@ -203,7 +203,7 @@ function App() {
     <div className="app">
       <header className="hero">
         <div className="hero__content">
-          <p className="eyebrow">BeyondChats Labs</p>
+          <p className="eyebrow">Adithya Yerrabothu</p>
           <h1>Article Evolution Studio</h1>
           <p className="hero__subtitle">
             Track original BeyondChats posts alongside LLM-enhanced versions inspired
@@ -321,7 +321,7 @@ function App() {
       </main>
 
       <footer className="footer">
-        <p>BeyondChats Assignment | Built with Laravel, Node, and React</p>
+        <p>BeyondChats Assignment | Built with Laravel, Node, and React | Adithya Yerrabothu</p>
       </footer>
       {modalArticle && (
         <div
