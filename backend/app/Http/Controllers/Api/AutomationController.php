@@ -18,6 +18,7 @@ class AutomationController extends Controller
         $script = env('AUTOMATION_SCRIPT', 'index.js');
         $force = $request->boolean('force', false);
         $statusPath = storage_path('app/automation_status.json');
+        $logPath = env('AUTOMATION_LOG_FILE', storage_path('app/automation.log'));
 
         if (!is_dir($workDir)) {
             return response()->json([
@@ -65,7 +66,8 @@ class AutomationController extends Controller
             'message' => 'Automation running.',
         ]);
 
-        $command = $this->buildBackgroundCommand($nodeBinary, $scriptPath);
+        $this->appendLog($logPath, 'Automation started.');
+        $command = $this->buildBackgroundCommand($nodeBinary, $scriptPath, $logPath);
         $process = Process::fromShellCommandline($command, $workDir, $env);
 
         try {
@@ -90,10 +92,11 @@ class AutomationController extends Controller
         ], 202);
     }
 
-    public function status(): JsonResponse
+    public function status(Request $request): JsonResponse
     {
         $statusPath = storage_path('app/automation_status.json');
         $status = $this->readStatus($statusPath);
+        $logPath = env('AUTOMATION_LOG_FILE', storage_path('app/automation.log'));
 
         if (!$status) {
             return response()->json([
@@ -110,21 +113,27 @@ class AutomationController extends Controller
                 'finished_at' => now()->toIso8601String(),
             ];
             $this->writeStatus($statusPath, $status);
+            $this->appendLog($logPath, 'Automation stalled. Marked as error.');
+        }
+
+        if ($request->boolean('logs')) {
+            $status['log_tail'] = $this->readLogTail($logPath, 50);
         }
 
         return response()->json($status);
     }
 
-    private function buildBackgroundCommand(string $nodeBinary, string $scriptPath): string
+    private function buildBackgroundCommand(string $nodeBinary, string $scriptPath, string $logPath): string
     {
         $node = escapeshellarg($nodeBinary);
         $script = escapeshellarg($scriptPath);
+        $log = escapeshellarg($logPath);
 
         if (PHP_OS_FAMILY === 'Windows') {
-            return sprintf('cmd /c start "" /B %s %s', $node, $script);
+            return sprintf('cmd /c start "" /B %s %s >> %s 2>&1', $node, $script, $log);
         }
 
-        return sprintf('nohup %s %s >/dev/null 2>&1 &', $node, $script);
+        return sprintf('nohup %s %s >> %s 2>&1 &', $node, $script, $log);
     }
 
     private function readStatus(string $statusPath): ?array
@@ -165,5 +174,30 @@ class AutomationController extends Controller
         }
 
         return (time() - $lastTimestamp) > ($maxMinutes * 60);
+    }
+
+    private function appendLog(string $logPath, string $message): void
+    {
+        $directory = dirname($logPath);
+        if (!is_dir($directory)) {
+            mkdir($directory, 0775, true);
+        }
+
+        $line = '[' . now()->toIso8601String() . '] ' . $message . PHP_EOL;
+        file_put_contents($logPath, $line, FILE_APPEND);
+    }
+
+    private function readLogTail(string $logPath, int $maxLines): array
+    {
+        if (!file_exists($logPath)) {
+            return [];
+        }
+
+        $lines = @file($logPath, FILE_IGNORE_NEW_LINES);
+        if (!is_array($lines)) {
+            return [];
+        }
+
+        return array_slice($lines, -$maxLines);
     }
 }

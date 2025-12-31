@@ -49,6 +49,13 @@ function App() {
   const [modalLabel, setModalLabel] = useState('');
   const [automationStatus, setAutomationStatus] = useState('idle');
   const [automationMessage, setAutomationMessage] = useState('');
+  const [automationLogs, setAutomationLogs] = useState([]);
+  const [automationMeta, setAutomationMeta] = useState({
+    currentIndex: null,
+    totalCount: null,
+    currentTitle: '',
+    lastUpdatedAt: '',
+  });
 
   const loadArticles = useCallback(async (signal) => {
     try {
@@ -80,7 +87,7 @@ function App() {
 
   const fetchAutomationStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/automation/status`);
+      const response = await fetch(`${API_BASE_URL}/automation/status?logs=1`);
       if (!response.ok) {
         throw new Error('Failed to load automation status.');
       }
@@ -88,6 +95,13 @@ function App() {
       const payload = await response.json();
       const nextStatus = payload.status || 'idle';
       setAutomationStatus(nextStatus);
+      setAutomationLogs(Array.isArray(payload.log_tail) ? payload.log_tail : []);
+      setAutomationMeta({
+        currentIndex: payload.current_index ?? null,
+        totalCount: payload.total_count ?? null,
+        currentTitle: payload.current_title ?? '',
+        lastUpdatedAt: payload.last_updated_at ?? '',
+      });
 
       if (nextStatus === 'success') {
         const updated = payload.updated_count ?? 0;
@@ -226,6 +240,21 @@ function App() {
             >
               {automationMessage}
             </p>
+          )}
+          {automationStatus === 'running' &&
+            automationMeta.currentTitle &&
+            automationMeta.currentIndex && (
+              <p className="status status--info">
+                Processing {automationMeta.currentIndex}
+                {automationMeta.totalCount ? `/${automationMeta.totalCount}` : ''}:{' '}
+                {automationMeta.currentTitle}
+              </p>
+            )}
+          {automationStatus !== 'idle' && automationLogs.length > 0 && (
+            <details className="log-panel">
+              <summary>Automation log</summary>
+              <pre>{automationLogs.join('\n')}</pre>
+            </details>
           )}
           <div className="hero__stats">
             <div className="stat-card">
