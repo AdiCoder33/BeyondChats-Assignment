@@ -62,6 +62,10 @@ Render settings:
   - `AUTOMATION_NODE_BINARY=node`
   - `AUTOMATION_WORKDIR=../automation`
   - `AUTOMATION_SCRIPT=index.js`
+  - `API_BASE_URL=http://127.0.0.1:10000/api`
+  - `HF_API_KEY` (or `OPENAI_API_KEY`)
+  - `HF_MODEL=google/gemma-2-2b-it`
+  - `HF_BASE_URL=https://router.huggingface.co/v1/chat/completions`
 
 API endpoints:
 - `GET /api/articles?type=original&withUpdated=true`
