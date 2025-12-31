@@ -35,7 +35,7 @@ class AutomationController extends Controller
         }
 
         $existingStatus = $this->readStatus($statusPath);
-        if (($existingStatus['status'] ?? '') === 'running') {
+        if (($existingStatus['status'] ?? '') === 'running' && !$this->isStale($existingStatus)) {
             return response()->json([
                 'status' => 'running',
                 'message' => 'Automation is already running.',
@@ -102,6 +102,16 @@ class AutomationController extends Controller
             ]);
         }
 
+        if (($status['status'] ?? '') === 'running' && $this->isStale($status)) {
+            $status = [
+                'status' => 'error',
+                'message' => 'Automation stalled. Please run it again.',
+                'started_at' => $status['started_at'] ?? null,
+                'finished_at' => now()->toIso8601String(),
+            ];
+            $this->writeStatus($statusPath, $status);
+        }
+
         return response()->json($status);
     }
 
@@ -139,5 +149,21 @@ class AutomationController extends Controller
         }
 
         file_put_contents($statusPath, json_encode($payload, JSON_PRETTY_PRINT));
+    }
+
+    private function isStale(array $status): bool
+    {
+        $maxMinutes = (int) env('AUTOMATION_MAX_MINUTES', 30);
+        $lastUpdate = $status['last_updated_at'] ?? $status['started_at'] ?? null;
+        if (!$lastUpdate) {
+            return false;
+        }
+
+        $lastTimestamp = strtotime($lastUpdate);
+        if ($lastTimestamp === false) {
+            return false;
+        }
+
+        return (time() - $lastTimestamp) > ($maxMinutes * 60);
     }
 }

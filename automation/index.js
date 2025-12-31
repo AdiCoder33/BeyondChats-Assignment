@@ -39,6 +39,10 @@ const automationState = {
   startedAt: null,
   updatedCount: 0,
   skippedCount: 0,
+  totalCount: 0,
+  currentIndex: 0,
+  currentTitle: '',
+  lastUpdatedAt: null,
 };
 
 async function writeAutomationStatus(status, extra = {}) {
@@ -47,12 +51,18 @@ async function writeAutomationStatus(status, extra = {}) {
   }
 
   try {
+    const now = new Date().toISOString();
+    automationState.lastUpdatedAt = now;
     await mkdir(path.dirname(AUTOMATION_STATUS_FILE), { recursive: true });
     const payload = {
       status,
       started_at: automationState.startedAt,
       updated_count: automationState.updatedCount,
       skipped_count: automationState.skippedCount,
+      total_count: automationState.totalCount,
+      current_index: automationState.currentIndex,
+      current_title: automationState.currentTitle,
+      last_updated_at: automationState.lastUpdatedAt,
       ...extra,
     };
     await writeFile(AUTOMATION_STATUS_FILE, JSON.stringify(payload, null, 2), 'utf8');
@@ -66,11 +76,24 @@ async function main() {
   await writeAutomationStatus('running', { message: 'Automation running.' });
 
   const originals = await fetchOriginalArticles();
+  automationState.totalCount = Math.min(originals.length, MAX_ORIGINALS);
+  await writeAutomationStatus('running', {
+    message: `Fetched ${originals.length} originals.`,
+  });
 
-  for (const original of originals.slice(0, MAX_ORIGINALS)) {
+  for (const [index, original] of originals.slice(0, MAX_ORIGINALS).entries()) {
+    automationState.currentIndex = index + 1;
+    automationState.currentTitle = original.title || '';
+    await writeAutomationStatus('running', {
+      message: `Processing ${automationState.currentIndex}/${automationState.totalCount}: ${original.title}`,
+    });
+
     if (SKIP_IF_UPDATED && (original.updated_articles || []).length > 0) {
       console.log(`Skipping "${original.title}" (already updated).`);
       automationState.skippedCount += 1;
+      await writeAutomationStatus('running', {
+        message: `Skipped ${automationState.currentIndex}/${automationState.totalCount}: ${original.title}`,
+      });
       continue;
     }
 
@@ -80,6 +103,9 @@ async function main() {
 
     if (references.length < 2) {
       console.log(`Not enough references found for "${original.title}".`);
+      await writeAutomationStatus('running', {
+        message: `Not enough references for "${original.title}".`,
+      });
       continue;
     }
 
@@ -102,6 +128,9 @@ async function main() {
 
     if (referenceArticles.length < 2) {
       console.log(`Not enough reference content for "${original.title}".`);
+      await writeAutomationStatus('running', {
+        message: `Not enough reference content for "${original.title}".`,
+      });
       continue;
     }
 
@@ -113,6 +142,9 @@ async function main() {
     const finalHtml = appendReferences(ensureArticleWrapper(updatedHtml), usedReferences);
     await publishUpdatedArticle(original, finalHtml, usedReferences);
     automationState.updatedCount += 1;
+    await writeAutomationStatus('running', {
+      message: `Published ${automationState.currentIndex}/${automationState.totalCount}: ${original.title}`,
+    });
 
     await delay(1000);
   }
