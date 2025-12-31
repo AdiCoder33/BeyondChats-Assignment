@@ -92,7 +92,7 @@ Required `.env` values:
 - `API_BASE_URL`: Defaults to `http://localhost:8000/api`.
 
 You can also trigger automation from the backend:
-- `POST /api/automation/run` (used by the frontend “Generate updated articles” button).
+- `POST /api/automation/run` (used by the frontend "Generate updated articles" button).
 - `GET /api/automation/status` (polling endpoint for progress updates).
 
 ## Frontend (Phase 3)
@@ -106,6 +106,11 @@ Create `.env` inside `frontend/`:
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
+For production builds:
+```bash
+VITE_API_BASE_URL=https://beyondchats-assignment-igd3.onrender.com/api
+```
+
 Run the UI:
 ```bash
 npm run dev
@@ -114,14 +119,15 @@ npm run dev
 ## Architecture / Data Flow
 ```mermaid
 flowchart LR
-    A[BeyondChats Blogs] -->|Scraper| B[(Laravel + Supabase Postgres)]
-    B -->|CRUD APIs| C[React Frontend]
-    B -->|GET originals| D[Node Automation]
-    D -->|Google Search| E[Search Provider]
-    D -->|Scrape references| F[External Blogs]
-    D -->|LLM API| G[LLM Provider (Hugging Face)]
-    D -->|POST updated| B
+    A[BeyondChats Blogs] --> B[Laravel API + Supabase Postgres]
+    B --> C[React Frontend]
+    B --> D[Node Automation]
+    D --> E[Search Provider]
+    D --> F[External Blogs]
+    D --> G[Hugging Face LLM]
+    D --> B
 ```
 
 ## Live Link
-- Frontend: <add deployment URL here>
+- Frontend: https://beyond-chats-assignment-kappa.vercel.app/
+- Backend: https://beyondchats-assignment-igd3.onrender.com
