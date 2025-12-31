@@ -12,7 +12,7 @@ Full-stack solution with three phases:
 
 ## Prerequisites
 - PHP 8.2+, Composer
-- Node.js 18+ (npm)
+- Node.js 20+ (npm)
 - Supabase Postgres project (or any Postgres database)
 
 ## Backend Setup (Laravel)
