@@ -32,4 +32,4 @@ WORKDIR /app/backend
 RUN chmod -R 775 storage bootstrap/cache || true
 
 ENV PORT=10000
-CMD ["sh", "-c", "php -S 0.0.0.0:${PORT} -t public vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php"]
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT} -t public server.php"]
