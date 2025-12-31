@@ -18,6 +18,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /app
 
 COPY backend ./backend
+RUN mkdir -p /app/backend/bootstrap/cache /app/backend/storage/framework /app/backend/storage/logs \
+  && chmod -R 775 /app/backend/bootstrap/cache /app/backend/storage
 RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=./backend
 
 COPY automation/package*.json ./automation/
