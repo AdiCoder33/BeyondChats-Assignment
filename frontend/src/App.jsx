@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import './App.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
@@ -47,36 +47,65 @@ function App() {
   const [error, setError] = useState('');
   const [modalArticle, setModalArticle] = useState(null);
   const [modalLabel, setModalLabel] = useState('');
+  const [automationStatus, setAutomationStatus] = useState('idle');
+  const [automationMessage, setAutomationMessage] = useState('');
+
+  const loadArticles = useCallback(async (signal) => {
+    try {
+      setStatus('loading');
+      const response = await fetch(
+        `${API_BASE_URL}/articles?type=original&withUpdated=true`,
+        signal ? { signal } : undefined
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to load articles.');
+      }
+
+      const data = await response.json();
+      setArticles(Array.isArray(data) ? data : []);
+      setStatus('ready');
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Something went wrong.');
+      setStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    const load = async () => {
-      try {
-        setStatus('loading');
-        const response = await fetch(
-          `${API_BASE_URL}/articles?type=original&withUpdated=true`,
-          { signal: controller.signal }
-        );
-
-        if (!response.ok) {
-          throw new Error('Failed to load articles.');
-        }
-
-        const data = await response.json();
-        setArticles(Array.isArray(data) ? data : []);
-        setStatus('ready');
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        setError(err.message || 'Something went wrong.');
-        setStatus('error');
-      }
-    };
-
-    load();
-
+    loadArticles(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [loadArticles]);
+
+  const runAutomation = useCallback(async () => {
+    try {
+      setAutomationStatus('running');
+      setAutomationMessage('Starting automation...');
+      setError('');
+
+      const response = await fetch(`${API_BASE_URL}/automation/run`, {
+        method: 'POST',
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.message || 'Automation failed.');
+      }
+
+      setAutomationStatus('started');
+      setAutomationMessage(
+        payload.message || 'Automation started. Refresh the list in a minute.'
+      );
+      setTimeout(() => {
+        loadArticles();
+      }, 10000);
+    } catch (err) {
+      setAutomationStatus('error');
+      setAutomationMessage(err.message || 'Automation failed.');
+    }
+  }, [loadArticles]);
 
   useEffect(() => {
     if (!modalArticle) {
@@ -117,6 +146,36 @@ function App() {
             Track original BeyondChats posts alongside LLM-enhanced versions inspired
             by top-ranking industry articles.
           </p>
+          <div className="hero__actions">
+            <button
+              className="hero__button"
+              type="button"
+              onClick={runAutomation}
+              disabled={automationStatus === 'running'}
+            >
+              {automationStatus === 'running'
+                ? 'Running automation...'
+                : 'Generate updated articles'}
+            </button>
+            <button
+              className="hero__button hero__button--ghost"
+              type="button"
+              onClick={() => loadArticles()}
+            >
+              Refresh articles
+            </button>
+          </div>
+          {automationStatus !== 'idle' && (
+            <p
+              className={`status ${
+                automationStatus === 'error'
+                  ? 'status--error'
+                  : 'status--info'
+              }`}
+            >
+              {automationMessage}
+            </p>
+          )}
           <div className="hero__stats">
             <div className="stat-card">
               <span className="stat-label">Originals</span>

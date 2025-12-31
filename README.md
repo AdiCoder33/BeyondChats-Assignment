@@ -65,6 +65,9 @@ Required `.env` values:
 - `SERPER_API_KEY` or `SERPAPI_API_KEY`: Search provider key.
 - `API_BASE_URL`: Defaults to `http://localhost:8000/api`.
 
+You can also trigger automation from the backend:
+- `POST /api/automation/run` (used by the frontend “Generate updated articles” button).
+
 ## Frontend (Phase 3)
 ```bash
 cd frontend
