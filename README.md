@@ -41,6 +41,28 @@ php artisan articles:scrape --limit=5
 php artisan serve
 ```
 
+## Deployment (Render)
+This repo includes a root-level `Dockerfile` so the backend + automation run together.
+
+Render settings:
+- Root directory: repo root (contains `Dockerfile`)
+- Environment: Docker
+- Add env vars:
+  - `APP_KEY` (generate locally with `php artisan key:generate --show`)
+  - `APP_ENV=production`
+  - `APP_DEBUG=false`
+  - `APP_URL=https://<your-render-service>.onrender.com`
+  - `DB_CONNECTION=pgsql`
+  - `DB_HOST=<supabase pooler host>`
+  - `DB_PORT=6543`
+  - `DB_DATABASE=postgres`
+  - `DB_USERNAME=postgres.<project-ref>`
+  - `DB_PASSWORD=<your-db-password>`
+  - `DB_SSLMODE=require`
+  - `AUTOMATION_NODE_BINARY=node`
+  - `AUTOMATION_WORKDIR=../automation`
+  - `AUTOMATION_SCRIPT=index.js`
+
 API endpoints:
 - `GET /api/articles?type=original&withUpdated=true`
 - `GET /api/articles/{id}`
