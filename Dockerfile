@@ -17,13 +17,12 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 
-COPY backend/composer.json backend/composer.lock ./backend/
+COPY backend ./backend
 RUN composer install --no-dev --prefer-dist --no-interaction --working-dir=./backend
 
 COPY automation/package*.json ./automation/
 RUN npm --prefix ./automation install --omit=dev
 
-COPY backend ./backend
 COPY automation ./automation
 
 WORKDIR /app/backend
