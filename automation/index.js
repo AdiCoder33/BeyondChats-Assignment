@@ -3,7 +3,6 @@ import axios from 'axios';
 import { load } from 'cheerio';
 import { JSDOM } from 'jsdom';
 import { Readability } from '@mozilla/readability';
-import OpenAI from 'openai';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -11,8 +10,6 @@ const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:8000/api';
 const SEARCH_PROVIDER = (process.env.SEARCH_PROVIDER || 'serper').toLowerCase();
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const HF_API_KEY = process.env.HF_API_KEY;
 const HF_MODEL = process.env.HF_MODEL || 'HuggingFaceH4/zephyr-7b-beta';
 const HF_BASE_URL =
@@ -34,7 +31,6 @@ const http = axios.create({
   },
 });
 
-const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 const automationState = {
   startedAt: null,
   updatedCount: 0,
@@ -394,21 +390,8 @@ ${originalText}
 ${referenceText}
 `.trim();
 
-  if (openai) {
-    const response = await openai.chat.completions.create({
-      model: OPENAI_MODEL,
-      messages: [
-        { role: 'system', content: 'You are a senior editor who writes clean, structured HTML.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-    });
-
-    return response.choices?.[0]?.message?.content?.trim() || '';
-  }
-
   if (!HF_API_KEY) {
-    throw new Error('Set OPENAI_API_KEY or HF_API_KEY to generate updated articles.');
+    throw new Error('Set HF_API_KEY to generate updated articles.');
   }
 
   const hfResponse = await postWithRetry(
