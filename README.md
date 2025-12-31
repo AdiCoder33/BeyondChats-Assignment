@@ -6,14 +6,14 @@ Full-stack solution with three phases:
 - Phase 3: React frontend to display original and updated articles.
 
 ## Repository Structure
-- `backend/`: Laravel 12 API + SQLite persistence + scraper command.
+- `backend/`: Laravel 12 API + Supabase Postgres + scraper command.
 - `automation/`: Node.js script to generate updated articles and publish them via the API.
 - `frontend/`: React (Vite) UI to show original and updated articles.
 
 ## Prerequisites
 - PHP 8.2+, Composer
 - Node.js 18+ (npm)
-- SQLite (bundled with PHP builds on most setups)
+- Supabase Postgres project (or any Postgres database)
 
 ## Backend Setup (Laravel)
 ```bash
@@ -21,6 +21,21 @@ cd backend
 composer install
 copy .env.example .env
 php artisan key:generate
+```
+
+Configure Supabase (pooler) in `backend/.env`:
+```bash
+DB_CONNECTION=pgsql
+DB_HOST=aws-1-ap-northeast-2.pooler.supabase.com
+DB_PORT=6543
+DB_DATABASE=postgres
+DB_USERNAME=postgres.<project-ref>
+DB_PASSWORD=your-db-password
+DB_SSLMODE=require
+```
+
+Then run:
+```bash
 php artisan migrate
 php artisan articles:scrape --limit=5
 php artisan serve
@@ -69,7 +84,7 @@ npm run dev
 ## Architecture / Data Flow
 ```mermaid
 flowchart LR
-    A[BeyondChats Blogs] -->|Scraper| B[(Laravel + SQLite)]
+    A[BeyondChats Blogs] -->|Scraper| B[(Laravel + Supabase Postgres)]
     B -->|CRUD APIs| C[React Frontend]
     B -->|GET originals| D[Node Automation]
     D -->|Google Search| E[Search Provider]
