@@ -3,7 +3,6 @@
 > 🚀 A powerful full-stack solution that automatically enhances blog articles using AI
 
 [![Live Demo](https://img.shields.io/badge/Demo-Live-success? style=for-the-badge)](https://beyond-chats-assignment-kappa.vercel.app/)
-[![Backend API](https://img.shields.io/badge/API-Live-blue?style=for-the-badge)](https://beyondchats-assignment-igd3.onrender.com)
 [![Laravel](https://img.shields.io/badge/Laravel-12-FF2D20?style=flat&logo=laravel&logoColor=white)](https://laravel.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org)
